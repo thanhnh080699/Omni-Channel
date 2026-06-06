@@ -1,0 +1,7 @@
+interface:
+  display_name: "Omni Channel Platform Architect"
+  short_description: "Architect omni-channel chat platforms"
+  default_prompt: "Use $omni-channel-platform-architect to design or debug an Omni Channel chat platform with Golang, MongoDB, RabbitMQ, Redis, NextJS, realtime sockets, RBAC, media CDN, and channel adapters."
+
+policy:
+  allow_implicit_invocation: true

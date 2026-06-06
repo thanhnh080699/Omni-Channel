@@ -1,0 +1,95 @@
+{
+  "skill_name": "omni-channel-platform-architect",
+  "evals": [
+    {
+      "id": 1,
+      "kind": "should-trigger",
+      "prompt": "Toi dang lam omni channel, Zalo nhan roi ma 2 phut sau moi ve app thi debug the nao?",
+      "expected_output": "Analyze inbound delay through channel, gateway, RabbitMQ, worker, MongoDB, socket, frontend, with metrics and sync recovery."
+    },
+    {
+      "id": 2,
+      "kind": "should-trigger",
+      "prompt": "Thiet ke DB MongoDB cho conversation va message da kenh.",
+      "expected_output": "Provide MongoDB collections, key fields, indexes, unique keys, and examples for conversations/messages."
+    },
+    {
+      "id": 3,
+      "kind": "should-trigger",
+      "prompt": "Viet API Golang de staff chi xem duoc chat duoc gan cho minh.",
+      "expected_output": "Design Golang API with conversation-level RBAC checks, staff assignment scope, errors, and audit logging."
+    },
+    {
+      "id": 4,
+      "kind": "should-trigger",
+      "prompt": "Tao docker compose cho Mongo, Redis, RabbitMQ, API, NextJS va worker.",
+      "expected_output": "Provide Docker Compose services, volumes, networks, env placeholders, healthchecks, and restart policies."
+    },
+    {
+      "id": 5,
+      "kind": "should-trigger",
+      "prompt": "Thiet ke adapter cho WhatsApp, Telegram, FB Page va Zalo.",
+      "expected_output": "Describe adapter interface, per-channel implementations, normalized contracts, and official/unofficial risks."
+    },
+    {
+      "id": 6,
+      "kind": "should-trigger",
+      "prompt": "Toi can phan quyen manager xem chat cua nhan vien cap duoi.",
+      "expected_output": "Explain manager/team visibility rules, staff restrictions, admin override, and audit checks."
+    },
+    {
+      "id": 7,
+      "kind": "should-trigger",
+      "prompt": "Thiet ke CDN luu anh theo tung conversation.",
+      "expected_output": "Describe async media worker, CDN path convention, attachment statuses, and access control."
+    },
+    {
+      "id": 8,
+      "kind": "should-trigger",
+      "prompt": "Socket disconnect thi FE NextJS phai sync lai message the nao?",
+      "expected_output": "Describe reconnect flow, REST sync by cursor, deduplication, and socket-not-source-of-truth behavior."
+    },
+    {
+      "id": 9,
+      "kind": "should-trigger",
+      "prompt": "Inbound queue bi backlog, worker fail giua chung va webhook bi gui trung thi xu ly ra sao?",
+      "expected_output": "Cover idempotency, ack-after-durable-write, retry queue, DLQ, metrics, and recovery."
+    },
+    {
+      "id": 10,
+      "kind": "should-trigger",
+      "prompt": "Review kien truc chat gateway Golang voi MongoDB RabbitMQ Redis cho multi-channel messaging.",
+      "expected_output": "Review architecture boundaries, queue design, Redis usage, data model, risks, and observability."
+    },
+    {
+      "id": 11,
+      "kind": "should-not-trigger",
+      "prompt": "Viet mot bai content ban hang my pham.",
+      "expected_output": "Skill should not trigger because this is unrelated marketing copy."
+    },
+    {
+      "id": 12,
+      "kind": "should-not-trigger",
+      "prompt": "Dich doan nay sang tieng Anh.",
+      "expected_output": "Skill should not trigger because this is a translation task."
+    },
+    {
+      "id": 13,
+      "kind": "should-not-trigger",
+      "prompt": "Tao logo cho thuong hieu.",
+      "expected_output": "Skill should not trigger because this is brand/logo design."
+    },
+    {
+      "id": 14,
+      "kind": "should-not-trigger",
+      "prompt": "Tinh ROI quang cao TikTok.",
+      "expected_output": "Skill should not trigger because this is advertising analytics."
+    },
+    {
+      "id": 15,
+      "kind": "should-not-trigger",
+      "prompt": "Sua loi Excel cong thuc bi sai.",
+      "expected_output": "Skill should not trigger because this is spreadsheet troubleshooting."
+    }
+  ]
+}
