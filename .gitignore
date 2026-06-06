@@ -51,6 +51,12 @@ go.work.sum
 # env file
 .env
 
+### Node / NextJS
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
 ### Python
 # Byte-compiled files
 __pycache__/
