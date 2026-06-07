@@ -61,6 +61,7 @@ Infrastructure:
 ## 4. Mandatory Design Rules
 
 - Design channels with adapter pattern. Do not hard-code channel-specific behavior into core chat services.
+- Every implementation run must include unit tests and document completed modules under `docs/` using numbered files such as `1-module-name.md`, `2-next-module.md`, and so on.
 - Use official APIs when available. For personal/unofficial connectors, explicitly state technical risk, ToS risk, login/session loss, checkpoint, captcha, rate limit, and account block risk.
 - Do not design spam, unauthorized scraping, credential bypass, security bypass, or systems that process accounts/channels the owner cannot legally manage.
 - Make inbound processing idempotent with raw event storage, dedupe keys, retry queues, DLQ, and sync recovery.

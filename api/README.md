@@ -14,17 +14,17 @@ authSource: admin
 database: omni_channel
 ```
 
-Start the API:
+Start the API in local development. This also autostarts `api/whatsapp-adapter` when `WHATSAPP_ADAPTER_AUTOSTART=true`:
 
 ```bash
-cd backend
+cd api
 MONGO_URI='mongodb://root:root@localhost:27017/omni_channel?authSource=admin' \
 MONGO_DATABASE='omni_channel' \
 JWT_SECRET='local-dev-secret' \
 ADMIN_EMAIL='admin@example.com' \
 ADMIN_PASSWORD='admin123456' \
 API_PORT=18080 \
-go run ./cmd/api
+go run main.go
 ```
 
 If port `8080` is free, set `API_PORT=8080`.

@@ -8,6 +8,7 @@ import type {
   Role,
   Team,
   User,
+  WhatsAppSession,
 } from "@/lib/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:18080";
@@ -103,6 +104,16 @@ export const api = {
     request<{ status: string }>(`/api/channel-admin/channel-accounts/${id}/disable`, { method: "POST", token }),
   channelAccountHealth: (token: string, id: string) =>
     request<Record<string, unknown>>(`/api/channel-admin/channel-accounts/${id}/health`, { token }),
+  whatsAppSession: (token: string, id: string) =>
+    request<WhatsAppSession>(`/api/channel-admin/channel-accounts/${id}/whatsapp/session`, { token }),
+  whatsAppConnect: (token: string, id: string) =>
+    request<WhatsAppSession>(`/api/channel-admin/channel-accounts/${id}/whatsapp/connect`, { method: "POST", token }),
+  whatsAppDisconnect: (token: string, id: string) =>
+    request<WhatsAppSession>(`/api/channel-admin/channel-accounts/${id}/whatsapp/disconnect`, { method: "POST", token }),
+  whatsAppResetSession: (token: string, id: string) =>
+    request<WhatsAppSession>(`/api/channel-admin/channel-accounts/${id}/whatsapp/reset-session`, { method: "POST", token }),
+  whatsAppResync: (token: string, id: string) =>
+    request<{ status: string }>(`/api/channel-admin/channel-accounts/${id}/whatsapp/resync`, { method: "POST", token }),
   auditLogs: (token: string, params?: Record<string, string | number | boolean | undefined>) =>
     request<ListResponse<AuditLog>>(`/api/admin/audit-logs${buildQuery(params)}`, { token }),
 };

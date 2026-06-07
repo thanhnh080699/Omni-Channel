@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"omni-channel/backend/internal/models"
+	"omni-channel/backend/internal/queue"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
@@ -246,6 +247,20 @@ func (h *Handler) sendMessage(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create outbound event"})
 		return
 	}
+	if h.queue != nil {
+		if err := h.queue.PublishOutbound(ctx, queue.OutboundEventPayload{
+			MessageID:        message.ID,
+			OutboundEventID:  outbound.ID,
+			ChannelAccountID: conversation.ChannelAccountID,
+			IdempotencyKey:   outbound.IdempotencyKey,
+			Attempt:          0,
+			QueuedAt:         now,
+			ExpiresAt:        now.Add(h.cfg.OutboundTTL),
+		}); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "could not enqueue outbound message"})
+			return
+		}
+	}
 	_, _ = h.db.C("conversations").UpdateByID(ctx, conversation.ID, updateTimeSet(bson.M{"last_message_at": now}))
 	h.audit(c, "message.send", "conversation", conversation.ID, map[string]interface{}{"message_id": message.ID})
 	c.JSON(http.StatusAccepted, gin.H{"data": message, "outbound_event": outbound})
@@ -298,6 +313,19 @@ func (h *Handler) retryMessage(c *gin.Context) {
 	}
 	_, _ = h.db.C("messages").UpdateByID(ctx, message.ID, updateTimeSet(bson.M{"status": "pending"}))
 	_, _ = h.db.C("outbound_events").UpdateOne(ctx, bson.M{"message_id": message.ID}, updateTimeSet(bson.M{"status": "pending", "last_error": ""}))
+	if h.queue != nil {
+		if err := h.queue.PublishOutbound(ctx, queue.OutboundEventPayload{
+			MessageID:        message.ID,
+			ChannelAccountID: conversation.ChannelAccountID,
+			IdempotencyKey:   message.ID + ":send",
+			Attempt:          0,
+			QueuedAt:         time.Now().UTC(),
+			ExpiresAt:        time.Now().UTC().Add(h.cfg.OutboundTTL),
+		}); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "could not enqueue retry"})
+			return
+		}
+	}
 	h.audit(c, "message.retry", "message", message.ID, nil)
 	c.JSON(http.StatusAccepted, gin.H{"status": "queued"})
 }

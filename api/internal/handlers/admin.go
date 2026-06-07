@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -450,14 +452,15 @@ func (h *Handler) listChannelAccounts(c *gin.Context) {
 }
 
 type channelAccountRequest struct {
-	ChannelID        string   `json:"channel_id" binding:"required"`
-	Name             string   `json:"name" binding:"required"`
-	OwnerTeamID      string   `json:"owner_team_id"`
-	SharedTeamIDs    []string `json:"shared_team_ids"`
-	SharedUserIDs    []string `json:"shared_user_ids"`
-	CredentialRef    string   `json:"credential_ref"`
-	WebhookSecretRef string   `json:"webhook_secret_ref"`
-	Enabled          *bool    `json:"enabled"`
+	ChannelID        string                 `json:"channel_id" binding:"required"`
+	Name             string                 `json:"name" binding:"required"`
+	OwnerTeamID      string                 `json:"owner_team_id"`
+	SharedTeamIDs    []string               `json:"shared_team_ids"`
+	SharedUserIDs    []string               `json:"shared_user_ids"`
+	CredentialRef    string                 `json:"credential_ref"`
+	WebhookSecretRef string                 `json:"webhook_secret_ref"`
+	Metadata         map[string]interface{} `json:"metadata"`
+	Enabled          *bool                  `json:"enabled"`
 }
 
 func (h *Handler) createChannelAccount(c *gin.Context) {
@@ -470,15 +473,21 @@ func (h *Handler) createChannelAccount(c *gin.Context) {
 	if req.Enabled != nil {
 		enabled = *req.Enabled
 	}
+	user, _ := currentUserOrAbort(c)
+	ownerTeamID := req.OwnerTeamID
+	if ownerTeamID == "" && len(user.TeamIDs) > 0 {
+		ownerTeamID = user.TeamIDs[0]
+	}
 	account := models.ChannelAccount{
 		Base:             newBase(),
 		ChannelID:        req.ChannelID,
 		Name:             req.Name,
-		OwnerTeamID:      req.OwnerTeamID,
+		OwnerTeamID:      ownerTeamID,
 		SharedTeamIDs:    req.SharedTeamIDs,
 		SharedUserIDs:    req.SharedUserIDs,
 		CredentialRef:    req.CredentialRef,
 		WebhookSecretRef: req.WebhookSecretRef,
+		Metadata:         req.Metadata,
 		SessionStatus:    "unknown",
 		Enabled:          enabled,
 	}
@@ -498,14 +507,20 @@ func (h *Handler) updateChannelAccount(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	user, _ := currentUserOrAbort(c)
+	ownerTeamID := req.OwnerTeamID
+	if ownerTeamID == "" && len(user.TeamIDs) > 0 {
+		ownerTeamID = user.TeamIDs[0]
+	}
 	set := bson.M{
 		"channel_id":         req.ChannelID,
 		"name":               req.Name,
-		"owner_team_id":      req.OwnerTeamID,
+		"owner_team_id":      ownerTeamID,
 		"shared_team_ids":    req.SharedTeamIDs,
 		"shared_user_ids":    req.SharedUserIDs,
 		"credential_ref":     req.CredentialRef,
 		"webhook_secret_ref": req.WebhookSecretRef,
+		"metadata":           req.Metadata,
 	}
 	if req.Enabled != nil {
 		set["enabled"] = *req.Enabled
@@ -566,6 +581,126 @@ func (h *Handler) channelAccountHealth(c *gin.Context) {
 		"last_error":      account.LastError,
 		"session_status":  account.SessionStatus,
 	})
+}
+
+func (h *Handler) whatsAppSession(c *gin.Context) {
+	h.proxyWhatsAppAdapter(c, http.MethodGet, "/session/"+c.Param("accountId"), true)
+}
+
+func (h *Handler) whatsAppConnect(c *gin.Context) {
+	h.proxyWhatsAppAdapter(c, http.MethodPost, "/connect/"+c.Param("accountId"), true)
+}
+
+func (h *Handler) whatsAppDisconnect(c *gin.Context) {
+	h.proxyWhatsAppAdapter(c, http.MethodPost, "/disconnect/"+c.Param("accountId"), false)
+}
+
+func (h *Handler) whatsAppResetSession(c *gin.Context) {
+	h.clearWhatsAppQRCache(c)
+	h.proxyWhatsAppAdapter(c, http.MethodPost, "/reset-session/"+c.Param("accountId"), false)
+}
+
+func (h *Handler) whatsAppResync(c *gin.Context) {
+	h.proxyWhatsAppAdapter(c, http.MethodPost, "/resync?account_id="+c.Param("accountId"), true)
+}
+
+func (h *Handler) proxyWhatsAppAdapter(c *gin.Context, method string, path string, cacheQR bool) {
+	cacheKey := h.whatsAppQRCacheKey(c)
+	if cacheQR && method == http.MethodGet {
+		if cached, ok := h.cachedWhatsAppQR(cacheKey); ok {
+			c.JSON(http.StatusOK, cached)
+			return
+		}
+	}
+	req, err := http.NewRequestWithContext(c.Request.Context(), method, strings.TrimRight(h.cfg.WhatsAppAdapterURL, "/")+path, nil)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not build adapter request"})
+		return
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		if method == http.MethodGet && strings.Contains(path, "/session/") {
+			c.JSON(http.StatusOK, gin.H{
+				"accountId":  c.Param("accountId"),
+				"status":     "error",
+				"lastError":  "whatsapp adapter unavailable",
+				"adapter_up": false,
+			})
+			return
+		}
+		c.JSON(http.StatusBadGateway, gin.H{"error": "whatsapp adapter unavailable"})
+		return
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if cacheQR && resp.StatusCode < 300 {
+		body = h.mergeWhatsAppQRCache(cacheKey, body)
+	}
+	c.Data(resp.StatusCode, "application/json", body)
+}
+
+func (h *Handler) whatsAppQRCacheKey(c *gin.Context) string {
+	user, _ := currentUserOrAbort(c)
+	return user.ID + ":" + c.Param("accountId")
+}
+
+func (h *Handler) cachedWhatsAppQR(key string) (gin.H, bool) {
+	if h.qrCache == nil {
+		return nil, false
+	}
+	h.qrCache.mu.Lock()
+	defer h.qrCache.mu.Unlock()
+	entry, ok := h.qrCache.entries[key]
+	if !ok || entry.QR == "" || time.Now().UTC().After(entry.FetchAfter) {
+		return nil, false
+	}
+	return gin.H{
+		"accountId":    key,
+		"status":       entry.Status,
+		"qr":           entry.QR,
+		"cached":       true,
+		"qr_cached_at": entry.UpdatedAt,
+	}, true
+}
+
+func (h *Handler) mergeWhatsAppQRCache(key string, body []byte) []byte {
+	if h.qrCache == nil {
+		return body
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return body
+	}
+	status, _ := payload["status"].(string)
+	qr, _ := payload["qr"].(string)
+
+	h.qrCache.mu.Lock()
+	defer h.qrCache.mu.Unlock()
+	if qr != "" {
+		h.qrCache.entries[key] = qrCacheEntry{QR: qr, Status: status, UpdatedAt: time.Now().UTC(), FetchAfter: time.Now().UTC().Add(5 * time.Second)}
+		payload["cached"] = false
+		payload["qr_cached_at"] = h.qrCache.entries[key].UpdatedAt
+	} else if entry, ok := h.qrCache.entries[key]; ok && entry.QR != "" && status != "connected" {
+		payload["qr"] = entry.QR
+		payload["cached"] = true
+		payload["qr_cached_at"] = entry.UpdatedAt
+	} else if status == "connected" || status == "disconnected" {
+		delete(h.qrCache.entries, key)
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return body
+	}
+	return encoded
+}
+
+func (h *Handler) clearWhatsAppQRCache(c *gin.Context) {
+	if h.qrCache == nil {
+		return
+	}
+	h.qrCache.mu.Lock()
+	defer h.qrCache.mu.Unlock()
+	delete(h.qrCache.entries, h.whatsAppQRCacheKey(c))
 }
 
 func (h *Handler) listAuditLogs(c *gin.Context) {

@@ -2,30 +2,54 @@ package handlers
 
 import (
 	"net/http"
+	"sync"
+	"time"
 
 	"omni-channel/backend/internal/auth"
 	"omni-channel/backend/internal/config"
 	"omni-channel/backend/internal/database"
 	"omni-channel/backend/internal/middleware"
+	"omni-channel/backend/internal/queue"
 	"omni-channel/backend/internal/rbac"
 
 	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
-	cfg    config.Config
-	db     *database.Mongo
-	tokens *auth.TokenService
-	rbac   *rbac.Checker
+	cfg     config.Config
+	db      *database.Mongo
+	tokens  *auth.TokenService
+	rbac    *rbac.Checker
+	queue   queue.Publisher
+	qrCache *qrCache
 }
 
-func NewRouter(cfg config.Config, db *database.Mongo, tokens *auth.TokenService) *gin.Engine {
+type qrCache struct {
+	mu      sync.Mutex
+	entries map[string]qrCacheEntry
+}
+
+type qrCacheEntry struct {
+	QR         string
+	Status     string
+	UpdatedAt  time.Time
+	FetchAfter time.Time
+}
+
+func NewRouter(cfg config.Config, db *database.Mongo, tokens *auth.TokenService, publisher queue.Publisher) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
 	router.Use(cors())
 
-	h := &Handler{cfg: cfg, db: db, tokens: tokens, rbac: rbac.NewChecker(db)}
+	h := &Handler{
+		cfg:     cfg,
+		db:      db,
+		tokens:  tokens,
+		rbac:    rbac.NewChecker(db),
+		queue:   publisher,
+		qrCache: &qrCache{entries: map[string]qrCacheEntry{}},
+	}
 
 	router.GET("/health", h.health)
 	router.POST("/api/auth/login", h.login)
@@ -75,6 +99,11 @@ func NewRouter(cfg config.Config, db *database.Mongo, tokens *auth.TokenService)
 	channelAdmin.POST("/channel-accounts/:accountId/enable", h.enableChannelAccount)
 	channelAdmin.POST("/channel-accounts/:accountId/disable", h.disableChannelAccount)
 	channelAdmin.GET("/channel-accounts/:accountId/health", h.channelAccountHealth)
+	channelAdmin.GET("/channel-accounts/:accountId/whatsapp/session", h.whatsAppSession)
+	channelAdmin.POST("/channel-accounts/:accountId/whatsapp/connect", h.whatsAppConnect)
+	channelAdmin.POST("/channel-accounts/:accountId/whatsapp/disconnect", h.whatsAppDisconnect)
+	channelAdmin.POST("/channel-accounts/:accountId/whatsapp/reset-session", h.whatsAppResetSession)
+	channelAdmin.POST("/channel-accounts/:accountId/whatsapp/resync", h.whatsAppResync)
 
 	api.GET("/conversations/my", h.listMyConversations)
 	api.GET("/conversations/team", h.listTeamConversations)

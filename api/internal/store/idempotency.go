@@ -1,0 +1,25 @@
+package store
+
+import (
+	"context"
+	"time"
+
+	"github.com/redis/go-redis/v9"
+)
+
+type IdempotencyGate struct {
+	client *redis.Client
+	ttl    time.Duration
+}
+
+func NewRedisClient(addr string, password string, db int) *redis.Client {
+	return redis.NewClient(&redis.Options{Addr: addr, Password: password, DB: db})
+}
+
+func NewIdempotencyGate(client *redis.Client, ttl time.Duration) *IdempotencyGate {
+	return &IdempotencyGate{client: client, ttl: ttl}
+}
+
+func (g *IdempotencyGate) FirstSeen(ctx context.Context, key string) (bool, error) {
+	return g.client.SetNX(ctx, key, "1", g.ttl).Result()
+}

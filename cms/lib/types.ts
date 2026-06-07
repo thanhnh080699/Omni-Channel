@@ -63,11 +63,28 @@ export type ChannelAccount = {
   shared_user_ids: string[];
   credential_ref?: string;
   webhook_secret_ref?: string;
+  metadata?: {
+    accountLabel?: string | null;
+    phone?: string | null;
+    browserName?: string | null;
+    autoConnect?: boolean;
+    syncFullHistory?: boolean;
+  };
   session_status: string;
   last_webhook_at?: string;
   last_sync_at?: string;
   last_error?: string;
   enabled: boolean;
+};
+
+export type WhatsAppSession = {
+  accountId: string;
+  status: "disconnected" | "connecting" | "qr" | "connected" | "error";
+  qr?: string;
+  lastSyncAt?: string;
+  lastError?: string;
+  cached?: boolean;
+  qr_cached_at?: string;
 };
 
 export type AuditLog = {

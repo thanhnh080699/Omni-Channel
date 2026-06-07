@@ -1,24 +1,41 @@
 package handlers
 
 import (
+	"bytes"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
-	"omni-channel/backend/internal/models"
+	"omni-channel/backend/internal/queue"
 
 	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func (h *Handler) receiveWebhook(c *gin.Context) {
-	var payload map[string]interface{}
-	if err := c.ShouldBindJSON(&payload); err != nil {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "could not read webhook body"})
+		return
+	}
+	c.Request.Body = io.NopCloser(bytes.NewReader(body))
+	if err := h.verifyWebhook(c, body); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid json payload"})
+		return
+	}
+	if h.queue == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "queue publisher is not configured"})
 		return
 	}
 
@@ -34,46 +51,54 @@ func (h *Handler) receiveWebhook(c *gin.Context) {
 		idempotencyKey = accountID + ":" + stablePayloadHash(payload)
 	}
 
-	now := time.Now().UTC()
-	eventTime := now
+	receivedAt := time.Now().UTC()
+	eventTime := receivedAt
 	if rawEventTime := stringValue(payload["event_time"]); rawEventTime != "" {
 		if parsed, err := time.Parse(time.RFC3339, rawEventTime); err == nil {
 			eventTime = parsed
 		}
 	}
 
-	event := models.InboundEvent{
-		Base:              newBase(),
-		ChannelAccountID:  accountID,
-		EventID:           eventID,
-		IdempotencyKey:    idempotencyKey,
-		RawPayload:        payload,
-		Status:            "received",
-		EventTime:         eventTime,
-		GatewayReceivedAt: now,
-		AttemptCount:      0,
-	}
-
 	ctx, cancel := timeout(c)
 	defer cancel()
+	queuedAt := time.Now().UTC()
+	envelope := queue.InboundEventPayload{
+		EventID:           eventID,
+		IdempotencyKey:    idempotencyKey,
+		Channel:           channel,
+		ChannelAccountID:  accountID,
+		ConversationID:    stringValue(payload["external_conversation_id"]),
+		RawPayload:        payload,
+		GatewayReceivedAt: receivedAt,
+		EventTime:         eventTime,
+		QueuedAt:          queuedAt,
+		Attempt:           0,
+		TraceID:           c.GetHeader("X-Request-ID"),
+	}
+	if err := h.queue.PublishInbound(ctx, envelope); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "could not enqueue inbound event"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "queued", "idempotency_key": idempotencyKey})
+}
 
-	update := bson.M{
-		"$setOnInsert": event,
+func (h *Handler) verifyWebhook(c *gin.Context, body []byte) error {
+	secret := strings.TrimSpace(h.cfg.WebhookSharedSecret)
+	if secret == "" {
+		return nil
 	}
-	result, err := h.db.C("inbound_events").UpdateOne(ctx, bson.M{"idempotency_key": idempotencyKey}, update, options.Update().SetUpsert(true))
-	if mongo.IsDuplicateKeyError(err) {
-		c.JSON(http.StatusAccepted, gin.H{"status": "duplicate", "idempotency_key": idempotencyKey})
-		return
+	signature := c.GetHeader("X-Omni-Signature")
+	if signature == "" {
+		return errors.New("missing webhook signature")
 	}
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not store inbound event"})
-		return
+	signature = strings.TrimPrefix(signature, "sha256=")
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write(body)
+	expected := hex.EncodeToString(mac.Sum(nil))
+	if !hmac.Equal([]byte(signature), []byte(expected)) {
+		return errors.New("invalid webhook signature")
 	}
-	status := "received"
-	if result.MatchedCount > 0 {
-		status = "duplicate"
-	}
-	c.JSON(http.StatusAccepted, gin.H{"status": status, "idempotency_key": idempotencyKey})
+	return nil
 }
 
 func stringValue(value interface{}) string {

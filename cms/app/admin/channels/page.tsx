@@ -1,334 +1,334 @@
 "use client";
 
-import { Cable, CheckCircle2, HeartPulse, Loader2, Plus, Power, Save, Share2 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { BotMessageSquare, Loader2, MessageCircle, Plug, Power, RefreshCw, RotateCcw, Save } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
+import { useEffect, useMemo, useState } from "react";
 import { AdminShell } from "@/components/admin-shell";
-import { DataTable } from "@/components/data-table";
 import { FormField } from "@/components/form-field";
-import { Modal } from "@/components/modal";
-import { PageHeader } from "@/components/page-header";
 import { StatusPill } from "@/components/status-pill";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import type { Channel, ChannelAccount, Team, User } from "@/lib/types";
+import type { Channel, ChannelAccount, WhatsAppSession } from "@/lib/types";
 
-const preferredChannelCodes = ["facebook_page", "zalo_oa", "whatsapp", "telegram"];
+type FormState = {
+  channelName: string;
+  accountLabel: string;
+  phone: string;
+  browserName: string;
+  enabled: boolean;
+  autoConnect: boolean;
+  syncFullHistory: boolean;
+};
 
-const emptyAccount = {
-  channel_id: "",
-  name: "",
-  owner_team_id: "",
-  shared_team_ids: [] as string[],
-  shared_user_ids: [] as string[],
-  credential_ref: "",
-  webhook_secret_ref: "",
+const initialForm: FormState = {
+  channelName: "WhatsApp",
+  accountLabel: "",
+  phone: "",
+  browserName: "Omni Channel CMS",
   enabled: true,
+  autoConnect: true,
+  syncFullHistory: true,
+};
+
+const statusLabel: Record<string, string> = {
+  connected: "Da ket noi",
+  qr: "Cho quet QR",
+  connecting: "Dang ket noi",
+  disconnected: "Chua ket noi",
+  error: "Loi",
+  unknown: "Chua ket noi",
 };
 
 export default function ChannelsPage() {
-  const { token, profile } = useAuth();
+  const { token } = useAuth();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [accounts, setAccounts] = useState<ChannelAccount[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [health, setHealth] = useState<Record<string, string>>({});
-  const [editing, setEditing] = useState<ChannelAccount | null>(null);
-  const [form, setForm] = useState(emptyAccount);
-  const [open, setOpen] = useState(false);
-  const [error, setError] = useState("");
+  const [session, setSession] = useState<WhatsAppSession | null>(null);
+  const [form, setForm] = useState<FormState>(initialForm);
+  const [selectedChannelID, setSelectedChannelID] = useState("");
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [working, setWorking] = useState("");
+  const [error, setError] = useState("");
 
-  const canManageChannels = Boolean(profile?.permissions["admin:manage"] || profile?.permissions["channel:manage"]);
-  const availableChannels = useMemo(() => {
-    const preferred = channels.filter((channel) => preferredChannelCodes.includes(channel.code));
-    return preferred.length > 0 ? preferred : channels;
-  }, [channels]);
+  const whatsAppChannel = useMemo(() => channels.find((channel) => channel.code === "whatsapp"), [channels]);
+  const selectedChannel = useMemo(() => channels.find((channel) => channel.id === selectedChannelID), [channels, selectedChannelID]);
+  const whatsAppAccount = useMemo(
+    () => accounts.find((account) => account.channel_id === whatsAppChannel?.id),
+    [accounts, whatsAppChannel?.id],
+  );
+  const effectiveStatus = session?.status || whatsAppAccount?.session_status || "unknown";
+  const qr = session?.qr || "";
 
   async function load() {
     if (!token) return;
     setLoading(true);
-    const [channelResult, accountResult, teamResult, userResult] = await Promise.all([
-      api.channelAdminChannels(token),
-      api.channelAccounts(token),
-      api.channelAdminTeams(token),
-      api.channelAdminUsers(token),
-    ]);
-    setChannels(channelResult.data || []);
-    setAccounts(accountResult.data || []);
-    setTeams(teamResult.data || []);
-    setUsers(userResult.data || []);
-    setLoading(false);
+    setError("");
+    try {
+      const [channelResult, accountResult] = await Promise.all([
+        api.channelAdminChannels(token),
+        api.channelAccounts(token),
+      ]);
+      const nextChannels = channelResult.data || [];
+      const nextAccounts = accountResult.data || [];
+      setChannels(nextChannels);
+      setAccounts(nextAccounts);
+      const whatsapp = nextChannels.find((channel) => channel.code === "whatsapp");
+      const account = nextAccounts.find((item) => item.channel_id === whatsapp?.id);
+      if (account) setForm(accountToForm(account));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load Omni Channel settings");
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
     void load();
   }, [token]);
 
-  function channelLabel(id: string) {
-    return channels.find((channel) => channel.id === id)?.name || id;
-  }
-
-  function edit(account?: ChannelAccount) {
+  async function selectChannel(channel: Channel) {
+    setSelectedChannelID(channel.id);
     setError("");
-    setEditing(account || null);
-    setForm(
-      account
-        ? {
-            channel_id: account.channel_id,
-            name: account.name,
-            owner_team_id: account.owner_team_id || "",
-            shared_team_ids: account.shared_team_ids || [],
-            shared_user_ids: account.shared_user_ids || [],
-            credential_ref: account.credential_ref || "",
-            webhook_secret_ref: account.webhook_secret_ref || "",
-            enabled: account.enabled,
-          }
-        : { ...emptyAccount, channel_id: availableChannels[0]?.id || "" },
-    );
-    setOpen(true);
+    if (channel.code !== "whatsapp") return;
+    const account = accounts.find((item) => item.channel_id === channel.id);
+    if (!account || !token) {
+      setSession(null);
+      setForm(initialForm);
+      return;
+    }
+    setForm(accountToForm(account));
+    try {
+      const currentSession = await api.whatsAppSession(token, account.id);
+      setSession(currentSession);
+    } catch {
+      setSession({ accountId: account.id, status: "error", lastError: "whatsapp adapter unavailable" });
+    }
   }
 
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!token) return;
+  async function saveSettings() {
+    if (!token || !whatsAppChannel) return;
+    setSaving(true);
+    setError("");
     try {
-      const payload = {
-        ...form,
-        shared_team_ids: form.shared_team_ids || [],
-        shared_user_ids: form.shared_user_ids || [],
+      const payload: Partial<ChannelAccount> = {
+        channel_id: whatsAppChannel.id,
+        name: form.accountLabel.trim() || form.channelName.trim() || "WhatsApp",
+        enabled: form.enabled,
+        shared_team_ids: [],
+        shared_user_ids: [],
+        metadata: {
+          accountLabel: form.accountLabel.trim() || null,
+          phone: form.phone.trim() || null,
+          browserName: form.browserName.trim() || "Omni Channel CMS",
+          autoConnect: form.autoConnect,
+          syncFullHistory: form.syncFullHistory,
+        },
       };
-      if (editing) {
-        await api.updateChannelAccount(token, editing.id, payload);
+      if (whatsAppAccount) {
+        await api.updateChannelAccount(token, whatsAppAccount.id, payload);
       } else {
         await api.createChannelAccount(token, payload);
       }
-      setOpen(false);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save channel account");
+      setError(err instanceof Error ? err.message : "Could not save settings");
+    } finally {
+      setSaving(false);
     }
   }
 
-  async function setEnabled(account: ChannelAccount, enabled: boolean) {
-    if (!token) return;
-    if (enabled) {
-      await api.enableChannelAccount(token, account.id);
-    } else {
-      await api.disableChannelAccount(token, account.id);
+  async function withAccount(action: string, fn: (account: ChannelAccount) => Promise<WhatsAppSession | void>) {
+    if (!whatsAppAccount) {
+      setError("Save settings before connecting WhatsApp.");
+      return;
     }
-    await load();
-  }
-
-  async function checkHealth(account: ChannelAccount) {
-    if (!token) return;
-    const result = await api.channelAccountHealth(token, account.id);
-    setHealth((current) => ({ ...current, [account.id]: String(result.session_status || result.channel_health || "unknown") }));
+    setWorking(action);
+    setError("");
+    try {
+      const result = await fn(whatsAppAccount);
+      if (result) setSession(result);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "WhatsApp action failed");
+    } finally {
+      setWorking("");
+    }
   }
 
   return (
     <AdminShell>
-      <PageHeader
-        title="Channel accounts"
-        description="Configure system-wide channel accounts and share message visibility with teams or selected users."
-        actions={
-          canManageChannels ? (
-            <button className="btn btn-primary" onClick={() => edit()}>
-              <Plus size={16} /> Add channel
-            </button>
-          ) : null
-        }
-      />
+      <div className="mb-6 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-blue-600">
+        <span>Dashboard</span>
+        <span style={{ color: "var(--app-muted)" }}>/</span>
+        <span>Settings</span>
+        <span style={{ color: "var(--app-muted)" }}>/</span>
+        <span style={{ color: "var(--app-muted)" }}>Omni Channel</span>
+      </div>
 
-      <section className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {availableChannels.map((channel) => (
-          <button
-            key={channel.id}
-            className="panel group p-4 text-left hover:-translate-y-0.5 hover:shadow-md"
-            onClick={() => {
-              setForm({ ...emptyAccount, channel_id: channel.id, name: channel.name });
-              setEditing(null);
-              setOpen(true);
-            }}
-          >
-            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-md bg-[var(--app-accent-soft-bg)] text-[var(--app-accent-soft-fg)]">
-              <Cable size={20} />
-            </div>
-            <div className="font-semibold">{channel.name}</div>
-            <div className="mt-1 text-sm" style={{ color: "var(--app-muted)" }}>
-              {channel.official_api_available ? "Official API" : "Unofficial connector"} · {channel.kind}
-            </div>
-          </button>
-        ))}
-      </section>
-
-      <section className="panel mb-5 p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="font-semibold">Operational status</h2>
-            <p className="mt-1 text-sm" style={{ color: "var(--app-muted)" }}>
-              Shared accounts make messages visible to selected teams/users after backend conversation permission checks.
-            </p>
-          </div>
-          <div className="flex gap-2 text-sm">
-            <div className="rounded-md border px-3 py-2" style={{ borderColor: "var(--app-border)" }}>
-              {accounts.length} accounts
-            </div>
-            <div className="rounded-md border px-3 py-2" style={{ borderColor: "var(--app-border)" }}>
-              {accounts.filter((account) => account.enabled).length} enabled
-            </div>
-          </div>
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
+            <BotMessageSquare className="h-6 w-6" /> Omni Channel
+          </h1>
+          <p className="mt-1 text-sm" style={{ color: "var(--app-muted)" }}>
+            Thiet lap tai khoan channel truoc khi van hanh inbox Chat.
+          </p>
         </div>
+        <StatusPill value={statusLabel[effectiveStatus] || effectiveStatus} />
+      </div>
+
+      <section className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {(channels.length ? channels : [{ id: "ch_whatsapp", code: "whatsapp", name: "WhatsApp", kind: "whatsapp", official_api_available: false, status: "enabled" }]).map((channel) => {
+          const account = accounts.find((item) => item.channel_id === channel.id);
+          const status = channel.code === "whatsapp" ? effectiveStatus : account?.session_status || "not_configured";
+          return (
+            <button
+              key={channel.id}
+              className="panel p-4 text-left"
+              onClick={() => void selectChannel(channel)}
+              style={{
+                outline: selectedChannelID === channel.id ? "2px solid var(--app-accent-soft-fg)" : "none",
+                outlineOffset: "2px",
+              }}
+            >
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[var(--app-accent-soft-bg)] text-[var(--app-accent-soft-fg)]">
+                  <MessageCircle size={20} />
+                </div>
+                <StatusPill value={statusLabel[status] || status} />
+              </div>
+              <div className="font-semibold">{channel.name}</div>
+              <div className="mt-1 text-sm" style={{ color: "var(--app-muted)" }}>
+                {channel.code === "whatsapp" ? "Baileys adapter" : channel.kind}
+              </div>
+            </button>
+          );
+        })}
       </section>
 
       {loading ? (
-        <div className="panel flex min-h-64 items-center justify-center">
+        <div className="panel flex min-h-80 items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--app-muted)" }} />
         </div>
+      ) : !selectedChannel ? (
+        <div className="panel flex min-h-64 items-center justify-center p-6 text-center text-sm" style={{ color: "var(--app-muted)" }}>
+          Chon mot channel o phia tren de xem va thiet lap cau hinh.
+        </div>
+      ) : selectedChannel.code !== "whatsapp" ? (
+        <div className="panel flex min-h-64 items-center justify-center p-6 text-center text-sm" style={{ color: "var(--app-muted)" }}>
+          Channel {selectedChannel.name} chua co man hinh cau hinh rieng trong phien ban nay.
+        </div>
       ) : (
-        <DataTable
-          data={accounts}
-          empty="No channel accounts found."
-          columns={[
-            {
-              key: "name",
-              label: "Account",
-              render: (row) => (
-                <div>
-                  <div className="font-medium">{row.name}</div>
-                  <div className="text-xs" style={{ color: "var(--app-muted)" }}>{channelLabel(row.channel_id)}</div>
+        <div className="grid gap-6 xl:grid-cols-[1fr_420px]">
+          <section className="panel p-5">
+            <div className="mb-5 flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-md bg-[var(--app-accent-soft-bg)] text-[var(--app-accent-soft-fg)]">
+                <MessageCircle className="h-5 w-5" />
+              </span>
+              <div>
+                <h2 className="font-semibold">WhatsApp</h2>
+                <p className="text-sm" style={{ color: "var(--app-muted)" }}>
+                  Adapter dau tien cua Omni Channel qua Baileys.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-5 md:grid-cols-2">
+              <FormField label="Ten channel">
+                <input className="field" value={form.channelName} onChange={(event) => setForm({ ...form, channelName: event.target.value })} />
+              </FormField>
+              <FormField label="Ten tai khoan">
+                <input className="field" value={form.accountLabel} onChange={(event) => setForm({ ...form, accountLabel: event.target.value })} placeholder="VD: Sale WhatsApp" />
+              </FormField>
+              <FormField label="So dien thoai">
+                <input className="field" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="84901234567" />
+              </FormField>
+              <FormField label="Browser name">
+                <input className="field" value={form.browserName} onChange={(event) => setForm({ ...form, browserName: event.target.value })} placeholder="Omni Channel CMS" />
+              </FormField>
+            </div>
+
+            <div className="mt-6 space-y-3">
+              <Checkbox checked={form.enabled} label="Bat channel nay" onChange={(checked) => setForm({ ...form, enabled: checked })} />
+              <Checkbox checked={form.autoConnect} label="Tu ket noi khi API khoi dong" onChange={(checked) => setForm({ ...form, autoConnect: checked })} />
+              <Checkbox checked={form.syncFullHistory} label="Dong bo them lich su WhatsApp khi ket noi" onChange={(checked) => setForm({ ...form, syncFullHistory: checked })} />
+            </div>
+
+            {error ? <div className="mt-5 rounded-md bg-red-50 p-3 text-sm text-danger">{error}</div> : null}
+
+            <div className="mt-6 flex flex-wrap gap-2">
+              <button className="btn btn-primary" onClick={saveSettings} disabled={saving || !whatsAppChannel}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />} Luu cai dat
+              </button>
+              <button className="btn" onClick={() => withAccount("connect", (account) => api.whatsAppConnect(token!, account.id))} disabled={!whatsAppAccount || working === "connect" || effectiveStatus === "connected" || effectiveStatus === "connecting"}>
+                {working === "connect" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug size={16} />} Ket noi
+              </button>
+              <button className="btn" onClick={() => withAccount("disconnect", (account) => api.whatsAppDisconnect(token!, account.id))} disabled={!whatsAppAccount || working === "disconnect"}>
+                {working === "disconnect" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power size={16} />} Ngat ket noi
+              </button>
+              <button className="btn" onClick={() => withAccount("reset", (account) => api.whatsAppResetSession(token!, account.id))} disabled={!whatsAppAccount || working === "reset"}>
+                {working === "reset" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw size={16} />} Reset session
+              </button>
+              <button className="btn" onClick={() => withAccount("resync", async (account) => { await api.whatsAppResync(token!, account.id); return api.whatsAppSession(token!, account.id); })} disabled={!whatsAppAccount || working === "resync"}>
+                {working === "resync" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw size={16} />} Resync
+              </button>
+            </div>
+          </section>
+
+          <section className="panel p-5">
+            <h2 className="font-semibold">Setup lan dau</h2>
+            <p className="mt-1 text-sm" style={{ color: "var(--app-muted)" }}>
+              Luu cai dat, bam ket noi, roi quet QR bang WhatsApp tren dien thoai.
+            </p>
+
+            <div className="mt-5 flex min-h-[240px] items-center justify-center rounded-md border border-dashed p-4" style={{ borderColor: "var(--app-border)", background: "var(--app-bg)" }}>
+              {qr ? (
+                <div className="rounded-md bg-white p-3">
+                  <QRCodeSVG value={qr} size={196} />
                 </div>
-              ),
-            },
-            { key: "enabled", label: "Enabled", render: (row) => <StatusPill value={row.enabled} /> },
-            { key: "session", label: "Session", render: (row) => <StatusPill value={health[row.id] || row.session_status} /> },
-            {
-              key: "sharing",
-              label: "Shared access",
-              render: (row) => (
-                <div className="flex flex-wrap gap-1 text-xs">
-                  {(row.shared_team_ids || []).map((id) => (
-                    <span key={id} className="rounded-full bg-[var(--app-accent-soft-bg)] px-2 py-1 text-[var(--app-accent-soft-fg)]">
-                      {teams.find((team) => team.id === id)?.name || id}
-                    </span>
-                  ))}
-                  {(row.shared_user_ids || []).map((id) => (
-                    <span key={id} className="rounded-full bg-[var(--app-success-soft-bg)] px-2 py-1 text-[var(--app-success-soft-fg)]">
-                      {users.find((user) => user.id === id)?.display_name || id}
-                    </span>
-                  ))}
-                  {(row.shared_team_ids || []).length + (row.shared_user_ids || []).length === 0 ? <span style={{ color: "var(--app-muted)" }}>Owner only</span> : null}
+              ) : effectiveStatus === "qr" || effectiveStatus === "connecting" ? (
+                <div className="flex flex-col items-center gap-2 text-sm" style={{ color: "var(--app-muted)" }}>
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  Dang cho QR...
                 </div>
-              ),
-            },
-            {
-              key: "actions",
-              label: "",
-              className: "w-80",
-              render: (row) => (
-                <div className="flex flex-wrap justify-end gap-2">
-                  <button className="btn h-8" onClick={() => checkHealth(row)} title="Check health">
-                    <HeartPulse size={15} /> Health
-                  </button>
-                  <button className="btn h-8" onClick={() => edit(row)}>
-                    <Share2 size={15} /> Configure
-                  </button>
-                  <button className="btn h-8" onClick={() => setEnabled(row, !row.enabled)}>
-                    <Power size={15} /> {row.enabled ? "Disable" : "Enable"}
-                  </button>
+              ) : (
+                <div className="text-center text-sm" style={{ color: "var(--app-muted)" }}>
+                  QR se hien thi khi trang thai la Cho quet QR.
                 </div>
-              ),
-            },
-          ]}
-        />
+              )}
+            </div>
+
+            <div className="mt-5 space-y-2 text-sm" style={{ color: "var(--app-muted)" }}>
+              {session?.cached ? <p className="font-medium text-amber-700">Dang dung QR da cache tren server de han che goi adapter lien tuc.</p> : null}
+              <p>1. Mo WhatsApp tren dien thoai.</p>
+              <p>2. Vao Linked devices.</p>
+              <p>3. Quet QR va doi trang thai chuyen sang Da ket noi.</p>
+            </div>
+          </section>
+        </div>
       )}
-
-      <Modal title={editing ? "Configure channel account" : "Add system channel"} open={open} onClose={() => setOpen(false)}>
-        <form className="space-y-5" onSubmit={save}>
-          <section className="space-y-3">
-            <div className="flex items-center gap-2 text-sm font-semibold">
-              <CheckCircle2 size={17} className="text-sky-600" /> Channel identity
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <FormField label="Channel type">
-                <select className="field" value={form.channel_id} onChange={(event) => setForm({ ...form, channel_id: event.target.value })} required>
-                  <option value="">Select channel</option>
-                  {availableChannels.map((channel) => (
-                    <option key={channel.id} value={channel.id}>
-                      {channel.name}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
-              <FormField label="Account display name">
-                <input className="field" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Sales FB Page" required />
-              </FormField>
-            </div>
-            <FormField label="Owner team">
-              <select className="field" value={form.owner_team_id} onChange={(event) => setForm({ ...form, owner_team_id: event.target.value })}>
-                <option value="">System owned</option>
-                {teams.map((team) => (
-                  <option key={team.id} value={team.id}>{team.name}</option>
-                ))}
-              </select>
-            </FormField>
-          </section>
-
-          <section className="space-y-3">
-            <div className="flex items-center gap-2 text-sm font-semibold">
-              <Share2 size={17} className="text-sky-600" /> Message sharing
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <FormField label="Shared teams">
-                <select
-                  className="field h-32"
-                  multiple
-                  value={form.shared_team_ids}
-                  onChange={(event) => setForm({ ...form, shared_team_ids: Array.from(event.target.selectedOptions).map((option) => option.value) })}
-                >
-                  {teams.map((team) => (
-                    <option key={team.id} value={team.id}>{team.name}</option>
-                  ))}
-                </select>
-              </FormField>
-              <FormField label="Shared users">
-                <select
-                  className="field h-32"
-                  multiple
-                  value={form.shared_user_ids}
-                  onChange={(event) => setForm({ ...form, shared_user_ids: Array.from(event.target.selectedOptions).map((option) => option.value) })}
-                >
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>{user.display_name} ({user.email})</option>
-                  ))}
-                </select>
-              </FormField>
-            </div>
-          </section>
-
-          <section className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <FormField label="Credential reference">
-                <input className="field" value={form.credential_ref} onChange={(event) => setForm({ ...form, credential_ref: event.target.value })} placeholder="secret://fb-page-sales" />
-              </FormField>
-              <FormField label="Webhook secret reference">
-                <input className="field" value={form.webhook_secret_ref} onChange={(event) => setForm({ ...form, webhook_secret_ref: event.target.value })} placeholder="secret://webhook-sales" />
-              </FormField>
-            </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={form.enabled} onChange={(event) => setForm({ ...form, enabled: event.target.checked })} />
-              Enable account
-            </label>
-          </section>
-
-          {error ? <div className="rounded-md bg-red-50 p-3 text-sm text-danger">{error}</div> : null}
-          <div className="flex justify-end gap-2">
-            <button className="btn" type="button" onClick={() => setOpen(false)}>Cancel</button>
-            <button className="btn btn-primary">
-              <Save size={16} /> Save channel
-            </button>
-          </div>
-        </form>
-      </Modal>
     </AdminShell>
+  );
+}
+
+function accountToForm(account: ChannelAccount): FormState {
+  return {
+    channelName: "WhatsApp",
+    accountLabel: account.metadata?.accountLabel || account.name || "",
+    phone: account.metadata?.phone || "",
+    browserName: account.metadata?.browserName || "Omni Channel CMS",
+    enabled: account.enabled,
+    autoConnect: account.metadata?.autoConnect !== false,
+    syncFullHistory: account.metadata?.syncFullHistory !== false,
+  };
+}
+
+function Checkbox({ checked, label, onChange }: { checked: boolean; label: string; onChange: (checked: boolean) => void }) {
+  return (
+    <label className="flex items-center gap-3 text-sm">
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      {label}
+    </label>
   );
 }

@@ -64,18 +64,19 @@ type Channel struct {
 
 type ChannelAccount struct {
 	Base             `bson:",inline"`
-	ChannelID        string     `bson:"channel_id" json:"channel_id"`
-	Name             string     `bson:"name" json:"name"`
-	OwnerTeamID      string     `bson:"owner_team_id,omitempty" json:"owner_team_id,omitempty"`
-	SharedTeamIDs    []string   `bson:"shared_team_ids" json:"shared_team_ids"`
-	SharedUserIDs    []string   `bson:"shared_user_ids" json:"shared_user_ids"`
-	CredentialRef    string     `bson:"credential_ref,omitempty" json:"credential_ref,omitempty"`
-	WebhookSecretRef string     `bson:"webhook_secret_ref,omitempty" json:"webhook_secret_ref,omitempty"`
-	SessionStatus    string     `bson:"session_status" json:"session_status"`
-	LastWebhookAt    *time.Time `bson:"last_webhook_at,omitempty" json:"last_webhook_at,omitempty"`
-	LastSyncAt       *time.Time `bson:"last_sync_at,omitempty" json:"last_sync_at,omitempty"`
-	LastError        string     `bson:"last_error,omitempty" json:"last_error,omitempty"`
-	Enabled          bool       `bson:"enabled" json:"enabled"`
+	ChannelID        string                 `bson:"channel_id" json:"channel_id"`
+	Name             string                 `bson:"name" json:"name"`
+	OwnerTeamID      string                 `bson:"owner_team_id,omitempty" json:"owner_team_id,omitempty"`
+	SharedTeamIDs    []string               `bson:"shared_team_ids" json:"shared_team_ids"`
+	SharedUserIDs    []string               `bson:"shared_user_ids" json:"shared_user_ids"`
+	CredentialRef    string                 `bson:"credential_ref,omitempty" json:"credential_ref,omitempty"`
+	WebhookSecretRef string                 `bson:"webhook_secret_ref,omitempty" json:"webhook_secret_ref,omitempty"`
+	Metadata         map[string]interface{} `bson:"metadata,omitempty" json:"metadata,omitempty"`
+	SessionStatus    string                 `bson:"session_status" json:"session_status"`
+	LastWebhookAt    *time.Time             `bson:"last_webhook_at,omitempty" json:"last_webhook_at,omitempty"`
+	LastSyncAt       *time.Time             `bson:"last_sync_at,omitempty" json:"last_sync_at,omitempty"`
+	LastError        string                 `bson:"last_error,omitempty" json:"last_error,omitempty"`
+	Enabled          bool                   `bson:"enabled" json:"enabled"`
 }
 
 type Conversation struct {
