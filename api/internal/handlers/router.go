@@ -30,10 +30,10 @@ type qrCache struct {
 }
 
 type qrCacheEntry struct {
-	QR         string
-	Status     string
-	UpdatedAt  time.Time
-	FetchAfter time.Time
+	QR        string
+	Status    string
+	UpdatedAt time.Time
+	ExpiresAt time.Time
 }
 
 func NewRouter(cfg config.Config, db *database.Mongo, tokens *auth.TokenService, publisher queue.Publisher) *gin.Engine {
@@ -54,6 +54,7 @@ func NewRouter(cfg config.Config, db *database.Mongo, tokens *auth.TokenService,
 	router.GET("/health", h.health)
 	router.POST("/api/auth/login", h.login)
 	router.POST("/webhooks/:channel/:accountId", h.receiveWebhook)
+	router.POST("/internal/whatsapp/message-status", h.whatsAppMessageStatus)
 
 	api := router.Group("/api")
 	api.Use(middleware.Auth(db, tokens))
@@ -62,6 +63,7 @@ func NewRouter(cfg config.Config, db *database.Mongo, tokens *auth.TokenService,
 	api.POST("/auth/change-password", h.changePassword)
 	api.POST("/auth/logout", h.logout)
 	api.POST("/auth/refresh", h.refresh)
+	api.GET("/notifications/chat", h.chatNotifications)
 
 	admin := api.Group("/admin")
 	admin.Use(h.requirePermission("admin:manage"))
@@ -107,15 +109,23 @@ func NewRouter(cfg config.Config, db *database.Mongo, tokens *auth.TokenService,
 
 	api.GET("/conversations/my", h.listMyConversations)
 	api.GET("/conversations/team", h.listTeamConversations)
+	api.GET("/conversations/trash", h.listTrashConversations)
+	api.POST("/conversations", h.createConversation)
 	api.GET("/conversations/:conversationId", h.getConversation)
+	api.DELETE("/conversations/:conversationId", h.deleteConversation)
+	api.POST("/conversations/:conversationId/restore", h.restoreConversation)
 	api.POST("/conversations/:conversationId/assign", h.assignConversation)
 	api.POST("/conversations/:conversationId/transfer", h.assignConversation)
-	api.POST("/conversations/:conversationId/close", h.closeConversation)
-	api.POST("/conversations/:conversationId/reopen", h.reopenConversation)
+	api.PATCH("/conversations/:conversationId/tags", h.updateConversationTags)
+	api.GET("/conversations/:conversationId/typing", h.conversationTyping)
 	api.GET("/conversations/:conversationId/messages", h.listMessages)
 	api.POST("/conversations/:conversationId/messages", h.sendMessage)
 	api.POST("/conversations/:conversationId/read", h.markConversationRead)
 	api.POST("/messages/:messageId/retry", h.retryMessage)
+	api.GET("/chat/channels", h.listChannels)
+	api.GET("/chat/channel-accounts", h.listChatChannelAccounts)
+	api.GET("/chat/channel-accounts/:accountId/check-phone", h.checkChannelAccountPhone)
+	api.GET("/chat/channel-accounts/:accountId/avatar", h.getChannelAccountAvatar)
 
 	return router
 }

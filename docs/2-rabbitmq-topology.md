@@ -16,15 +16,17 @@ dlq.exchange -> dlq.queue
 
 The dispatcher hashes `conversationId` with FNV-1a and routes every event for the same conversation to the same `conv.queue.N`. Each conversation queue is consumed with prefetch `1`; do not increase the consumer count for a conversation partition.
 
-## Worker Commands
+## Runtime
 
-Run the API server with:
+Run the API server with one command:
 
 ```bash
 go run . serve
 ```
 
-Run queue workers with:
+The API process starts the HTTP server, channel adapter supervision, dispatcher, conversation workers, outbound worker, and resync loop together. This is the default and recommended runtime so inbound queues always have consumers.
+
+For advanced debugging only, workers can still be run without the HTTP API:
 
 ```bash
 go run . worker

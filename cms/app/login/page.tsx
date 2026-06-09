@@ -1,6 +1,6 @@
 "use client";
 
-import { LockKeyhole } from "lucide-react";
+import { LockKeyhole, Loader2 } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { useAuth } from "@/lib/auth";
 
@@ -63,7 +63,12 @@ export default function LoginPage() {
               />
             </label>
           </div>
-          {error ? <div className="mt-4 rounded-md bg-red-50 p-3 text-sm text-danger">{error}</div> : null}
+          {error ? (
+            <div className="mt-4 rounded-md bg-red-50 p-3 text-sm text-danger flex items-center gap-2">
+              {error.includes("Mất kết nối") && <Loader2 className="h-4 w-4 animate-spin text-danger" />}
+              <span>{error}</span>
+            </div>
+          ) : null}
           <button className="btn btn-primary mt-5 w-full" disabled={submitting}>
             {submitting ? "Signing in..." : "Sign in"}
           </button>

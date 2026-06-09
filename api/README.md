@@ -1,6 +1,29 @@
 # Omni Channel Backend API
 
-Golang API for the Omni Channel Chat Platform. This first backend slice includes MongoDB connection, collection indexes, RBAC seed data, auth, admin CRUD foundations, channel account management, conversation/message endpoints, audit logs, and raw inbound webhook storage.
+Golang API for the Omni Channel Chat Platform. This first backend slice includes MongoDB connection, collection indexes, RBAC seed data, auth, admin CRUD foundations, channel account management, conversation/message endpoints, audit logs, raw inbound webhook storage, and channel adapter supervision.
+
+## API Layout
+
+```txt
+api/
+  adapter/
+    whatsapp/        TypeScript WhatsApp adapter; future channel adapters live here too.
+  internal/
+    adapterprocess/  Starts and supervises local adapter processes.
+    auth/            Password and JWT services.
+    channel/         Shared channel contracts.
+    config/          Single API environment loader.
+    database/        MongoDB connection, indexes, seeders.
+    handlers/        HTTP handlers and route registration.
+    middleware/      Request and auth middleware.
+    models/          MongoDB domain models.
+    queue/           RabbitMQ topology and payloads.
+    rbac/            Permission rules.
+    store/           Redis-backed gates and stores.
+    workers/         Queue consumers and background processors.
+```
+
+All API runtime configuration belongs in `api/.env`, copied from `api/.env.example`. Adapter-specific values are kept in the same file; do not add per-adapter `.env.example` files under `api/adapter/*`.
 
 ## Run Locally
 
@@ -14,7 +37,7 @@ authSource: admin
 database: omni_channel
 ```
 
-Start the API in local development. This also autostarts `api/whatsapp-adapter` when `WHATSAPP_ADAPTER_AUTOSTART=true`:
+Start the API in local development. This also autostarts `api/adapter/whatsapp` when `WHATSAPP_ADAPTER_AUTOSTART=true`:
 
 ```bash
 cd api

@@ -37,7 +37,7 @@ type Config struct {
 }
 
 func Load() Config {
-	_ = godotenv.Load("backend/.env")
+	_ = godotenv.Load("api/.env")
 	_ = godotenv.Load(".env")
 
 	ttlHours, err := strconv.Atoi(getenv("JWT_TTL_HOURS", "24"))
@@ -83,7 +83,7 @@ func Load() Config {
 		WhatsAppAdapterURL:         getenv("WHATSAPP_ADAPTER_URL", "http://localhost:19090"),
 		WhatsAppAdapterAutostart:   getenv("WHATSAPP_ADAPTER_AUTOSTART", "true") == "true",
 		WhatsAppAdapterAutoInstall: getenv("WHATSAPP_ADAPTER_AUTO_INSTALL", "true") == "true",
-		WhatsAppAdapterDir:         getenv("WHATSAPP_ADAPTER_DIR", "./whatsapp-adapter"),
+		WhatsAppAdapterDir:         getenv("WHATSAPP_ADAPTER_DIR", "./adapter/whatsapp"),
 		WhatsAppAdapterCommand:     getenv("WHATSAPP_ADAPTER_COMMAND", "npm"),
 		WhatsAppAdapterArgs:        adapterArgs,
 		WebhookSharedSecret:        getenv("WEBHOOK_SHARED_SECRET", ""),

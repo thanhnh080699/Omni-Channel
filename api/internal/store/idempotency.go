@@ -13,7 +13,7 @@ type IdempotencyGate struct {
 }
 
 func NewRedisClient(addr string, password string, db int) *redis.Client {
-	return redis.NewClient(&redis.Options{Addr: addr, Password: password, DB: db})
+	return redis.NewClient(&redis.Options{Addr: addr, Password: password, DB: db, DialTimeout: 3 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 3 * time.Second})
 }
 
 func NewIdempotencyGate(client *redis.Client, ttl time.Duration) *IdempotencyGate {
@@ -21,5 +21,7 @@ func NewIdempotencyGate(client *redis.Client, ttl time.Duration) *IdempotencyGat
 }
 
 func (g *IdempotencyGate) FirstSeen(ctx context.Context, key string) (bool, error) {
-	return g.client.SetNX(ctx, key, "1", g.ttl).Result()
+	gateCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	return g.client.SetNX(gateCtx, key, "1", g.ttl).Result()
 }

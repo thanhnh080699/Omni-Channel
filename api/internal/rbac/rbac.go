@@ -82,9 +82,6 @@ func (c *Checker) CanViewConversation(ctx context.Context, user models.User, con
 }
 
 func (c *Checker) CanSendMessage(ctx context.Context, user models.User, conversation models.Conversation) (bool, error) {
-	if conversation.Status != "open" {
-		return false, nil
-	}
 	allowedView, err := c.CanViewConversation(ctx, user, conversation)
 	if err != nil || !allowedView {
 		return allowedView, err

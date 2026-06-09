@@ -487,7 +487,7 @@ func (h *Handler) createChannelAccount(c *gin.Context) {
 		SharedUserIDs:    req.SharedUserIDs,
 		CredentialRef:    req.CredentialRef,
 		WebhookSecretRef: req.WebhookSecretRef,
-		Metadata:         req.Metadata,
+		Metadata:         defaultChannelMetadata(req.Metadata),
 		SessionStatus:    "unknown",
 		Enabled:          enabled,
 	}
@@ -520,7 +520,7 @@ func (h *Handler) updateChannelAccount(c *gin.Context) {
 		"shared_user_ids":    req.SharedUserIDs,
 		"credential_ref":     req.CredentialRef,
 		"webhook_secret_ref": req.WebhookSecretRef,
-		"metadata":           req.Metadata,
+		"metadata":           defaultChannelMetadata(req.Metadata),
 	}
 	if req.Enabled != nil {
 		set["enabled"] = *req.Enabled
@@ -534,6 +534,19 @@ func (h *Handler) updateChannelAccount(c *gin.Context) {
 	}
 	h.audit(c, "channel_account.update", "channel_account", c.Param("accountId"), set)
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func defaultChannelMetadata(metadata map[string]interface{}) map[string]interface{} {
+	if metadata == nil {
+		metadata = map[string]interface{}{}
+	}
+	if _, ok := metadata["autoConnect"]; !ok {
+		metadata["autoConnect"] = true
+	}
+	if _, ok := metadata["syncFullHistory"]; !ok {
+		metadata["syncFullHistory"] = true
+	}
+	return metadata
 }
 
 func (h *Handler) enableChannelAccount(c *gin.Context) {
@@ -606,7 +619,7 @@ func (h *Handler) whatsAppResync(c *gin.Context) {
 
 func (h *Handler) proxyWhatsAppAdapter(c *gin.Context, method string, path string, cacheQR bool) {
 	cacheKey := h.whatsAppQRCacheKey(c)
-	if cacheQR && method == http.MethodGet {
+	if cacheQR && (method == http.MethodGet || (method == http.MethodPost && strings.Contains(path, "/connect/"))) {
 		if cached, ok := h.cachedWhatsAppQR(cacheKey); ok {
 			c.JSON(http.StatusOK, cached)
 			return
@@ -651,15 +664,19 @@ func (h *Handler) cachedWhatsAppQR(key string) (gin.H, bool) {
 	h.qrCache.mu.Lock()
 	defer h.qrCache.mu.Unlock()
 	entry, ok := h.qrCache.entries[key]
-	if !ok || entry.QR == "" || time.Now().UTC().After(entry.FetchAfter) {
+	if !ok || entry.QR == "" || time.Now().UTC().After(entry.ExpiresAt) {
+		if ok {
+			delete(h.qrCache.entries, key)
+		}
 		return nil, false
 	}
 	return gin.H{
-		"accountId":    key,
-		"status":       entry.Status,
-		"qr":           entry.QR,
-		"cached":       true,
-		"qr_cached_at": entry.UpdatedAt,
+		"accountId":     accountIDFromQRCacheKey(key),
+		"status":        entry.Status,
+		"qr":            entry.QR,
+		"cached":        true,
+		"qr_cached_at":  entry.UpdatedAt,
+		"qr_expires_at": entry.ExpiresAt,
 	}, true
 }
 
@@ -673,25 +690,65 @@ func (h *Handler) mergeWhatsAppQRCache(key string, body []byte) []byte {
 	}
 	status, _ := payload["status"].(string)
 	qr, _ := payload["qr"].(string)
+	qrExpiresAt := parseQRExpiresAt(payload["qrExpiresAt"], payload["qr_expires_at"])
 
 	h.qrCache.mu.Lock()
 	defer h.qrCache.mu.Unlock()
 	if qr != "" {
-		h.qrCache.entries[key] = qrCacheEntry{QR: qr, Status: status, UpdatedAt: time.Now().UTC(), FetchAfter: time.Now().UTC().Add(5 * time.Second)}
+		if !qrExpiresAt.After(time.Now().UTC()) {
+			delete(h.qrCache.entries, key)
+			delete(payload, "qr")
+			payload["status"] = "connecting"
+			payload["lastError"] = "QR expired, waiting for a new QR"
+			return mustJSON(body, payload)
+		}
+		h.qrCache.entries[key] = qrCacheEntry{QR: qr, Status: status, UpdatedAt: time.Now().UTC(), ExpiresAt: qrExpiresAt}
 		payload["cached"] = false
 		payload["qr_cached_at"] = h.qrCache.entries[key].UpdatedAt
+		payload["qr_expires_at"] = h.qrCache.entries[key].ExpiresAt
 	} else if entry, ok := h.qrCache.entries[key]; ok && entry.QR != "" && status != "connected" {
-		payload["qr"] = entry.QR
-		payload["cached"] = true
-		payload["qr_cached_at"] = entry.UpdatedAt
+		if time.Now().UTC().Before(entry.ExpiresAt) {
+			payload["qr"] = entry.QR
+			payload["cached"] = true
+			payload["qr_cached_at"] = entry.UpdatedAt
+			payload["qr_expires_at"] = entry.ExpiresAt
+		} else {
+			delete(h.qrCache.entries, key)
+		}
 	} else if status == "connected" || status == "disconnected" {
 		delete(h.qrCache.entries, key)
 	}
+	return mustJSON(body, payload)
+}
+
+func parseQRExpiresAt(values ...interface{}) time.Time {
+	for _, value := range values {
+		raw, ok := value.(string)
+		if !ok || strings.TrimSpace(raw) == "" {
+			continue
+		}
+		parsed, err := time.Parse(time.RFC3339Nano, raw)
+		if err == nil {
+			return parsed.UTC()
+		}
+	}
+	return time.Now().UTC().Add(25 * time.Second)
+}
+
+func mustJSON(fallback []byte, payload map[string]interface{}) []byte {
 	encoded, err := json.Marshal(payload)
 	if err != nil {
-		return body
+		return fallback
 	}
 	return encoded
+}
+
+func accountIDFromQRCacheKey(key string) string {
+	parts := strings.SplitN(key, ":", 2)
+	if len(parts) == 2 {
+		return parts[1]
+	}
+	return key
 }
 
 func (h *Handler) clearWhatsAppQRCache(c *gin.Context) {

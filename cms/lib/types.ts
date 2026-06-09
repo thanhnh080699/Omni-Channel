@@ -77,14 +77,80 @@ export type ChannelAccount = {
   enabled: boolean;
 };
 
+export type Conversation = {
+  id: string;
+  channel_account_id: string;
+  external_conversation_id: string;
+  customer_ref?: string;
+  customer_name?: string;
+  assigned_user_id?: string;
+  assigned_team_id?: string;
+  status: string;
+  last_message_at: string;
+  last_message_text?: string;
+  unread_count: number;
+  has_unread?: boolean;
+  last_seen_at?: string;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string;
+};
+
+export type ChatNotificationItem = {
+  conversation_id: string;
+  customer_name: string;
+  customer_ref: string;
+  channel_account_id: string;
+  last_message_text: string;
+  last_message_at: string;
+  unread_count: number;
+};
+
+export type ChatNotificationSummary = {
+  total_unread: number;
+  missed_count: number;
+  latest_at?: string;
+  items: ChatNotificationItem[];
+};
+
+export type Message = {
+  id: string;
+  conversation_id: string;
+  direction: "inbound" | "outbound" | string;
+  sender_type: "customer" | "agent" | string;
+  sender_user_id?: string;
+  channel_message_id?: string;
+  channel_message_key?: string;
+  text: string;
+  status: string;
+  event_time: string;
+  sent_at?: string;
+  delivered_at?: string;
+  read_at?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TypingStatus = {
+  accountId?: string;
+  jid?: string;
+  typing: boolean;
+  updatedAt?: string;
+  expiresAt?: string;
+  adapter_up?: boolean;
+};
+
 export type WhatsAppSession = {
   accountId: string;
   status: "disconnected" | "connecting" | "qr" | "connected" | "error";
   qr?: string;
+  qrExpiresAt?: string;
   lastSyncAt?: string;
   lastError?: string;
   cached?: boolean;
   qr_cached_at?: string;
+  qr_expires_at?: string;
 };
 
 export type AuditLog = {

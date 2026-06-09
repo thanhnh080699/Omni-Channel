@@ -2,11 +2,15 @@ import type {
   AuditLog,
   Channel,
   ChannelAccount,
+  ChatNotificationSummary,
+  Conversation,
   ListResponse,
+  Message,
   PermissionMatrix,
   Profile,
   Role,
   Team,
+  TypingStatus,
   User,
   WhatsAppSession,
 } from "@/lib/types";
@@ -35,10 +39,20 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     headers.set("Authorization", `Bearer ${options.token}`);
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.toLowerCase().includes("failed to fetch") || message.toLowerCase().includes("fetch")) {
+      throw new Error("Mất kết nối đến máy chủ, đang thử kết nối lại.");
+    }
+    throw error;
+  }
+
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(payload.error || "Request failed");
@@ -86,6 +100,12 @@ export const api = {
   channelAdminChannels: (token: string) => request<ListResponse<Channel>>("/api/channel-admin/channels", { token }),
   channelAdminTeams: (token: string) => request<ListResponse<Team>>("/api/channel-admin/teams", { token }),
   channelAdminUsers: (token: string) => request<ListResponse<User>>("/api/channel-admin/users", { token }),
+  chatChannels: (token: string) => request<ListResponse<Channel>>("/api/chat/channels", { token }),
+  chatChannelAccounts: (token: string) => request<ListResponse<ChannelAccount>>("/api/chat/channel-accounts", { token }),
+  checkChannelAccountPhone: (token: string, accountId: string, phone: string) =>
+    request<{ exists: boolean }>(`/api/chat/channel-accounts/${accountId}/check-phone${buildQuery({ phone })}`, { token }),
+  getWhatsAppAvatar: (token: string, accountId: string, jid: string) =>
+    request<{ url: string }>(`/api/chat/channel-accounts/${accountId}/avatar${buildQuery({ jid })}`, { token }),
   createChannelAccount: (token: string, body: Partial<ChannelAccount>) =>
     request<{ data: ChannelAccount }>("/api/channel-admin/channel-accounts", {
       method: "POST",
@@ -116,4 +136,49 @@ export const api = {
     request<{ status: string }>(`/api/channel-admin/channel-accounts/${id}/whatsapp/resync`, { method: "POST", token }),
   auditLogs: (token: string, params?: Record<string, string | number | boolean | undefined>) =>
     request<ListResponse<AuditLog>>(`/api/admin/audit-logs${buildQuery(params)}`, { token }),
+  chatNotifications: (token: string, params?: Record<string, string | number | boolean | undefined>) =>
+    request<ChatNotificationSummary>(`/api/notifications/chat${buildQuery(params)}`, { token }),
+  conversations: (token: string, scope: "my" | "team", params?: Record<string, string | number | boolean | undefined>) =>
+    request<ListResponse<Conversation>>(`/api/conversations/${scope}${buildQuery(params)}`, { token }),
+  createConversation: (token: string, body: { channel_account_id: string; customer_ref: string }) =>
+    request<{ data: Conversation }>("/api/conversations", {
+      method: "POST",
+      token,
+      body: JSON.stringify(body),
+    }),
+  conversation: (token: string, id: string) =>
+    request<{ data: Conversation }>(`/api/conversations/${id}`, { token }),
+  conversationMessages: (token: string, id: string, params?: Record<string, string | number | boolean | undefined>) =>
+    request<ListResponse<Message>>(`/api/conversations/${id}/messages${buildQuery(params)}`, { token }),
+  conversationTyping: (token: string, id: string) =>
+    request<TypingStatus>(`/api/conversations/${id}/typing`, { token }),
+  sendConversationMessage: (token: string, id: string, text: string) =>
+    request<{ data: Message }>(`/api/conversations/${id}/messages`, {
+      method: "POST",
+      token,
+      body: JSON.stringify({ text }),
+    }),
+  markConversationRead: (token: string, id: string, messageId?: string) =>
+    request<{ status: string }>(`/api/conversations/${id}/read${buildQuery({ message_id: messageId })}`, {
+      method: "POST",
+      token,
+    }),
+  updateConversationTags: (token: string, id: string, tags: string[]) =>
+    request<{ data: Conversation }>(`/api/conversations/${id}/tags`, {
+      method: "PATCH",
+      token,
+      body: JSON.stringify({ tags }),
+    }),
+  deleteConversation: (token: string, id: string) =>
+    request<{ status: string }>(`/api/conversations/${id}`, {
+      method: "DELETE",
+      token,
+    }),
+  restoreConversation: (token: string, id: string) =>
+    request<{ data: Conversation }>(`/api/conversations/${id}/restore`, {
+      method: "POST",
+      token,
+    }),
+  trashConversations: (token: string, params?: Record<string, string | number | boolean | undefined>) =>
+    request<ListResponse<Conversation>>(`/api/conversations/trash${buildQuery(params)}`, { token }),
 };

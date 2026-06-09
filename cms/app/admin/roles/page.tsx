@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { Plus, Loader2 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { AdminShell } from "@/components/admin-shell";
 import { DataTable } from "@/components/data-table";
@@ -159,7 +159,12 @@ export default function RolesPage() {
               </label>
             ))}
           </div>
-          {error ? <div className="rounded-md bg-red-50 p-3 text-sm text-danger">{error}</div> : null}
+          {error ? (
+            <div className="rounded-md bg-red-50 p-3 text-sm text-danger flex items-center gap-2">
+              {error.includes("Mất kết nối") && <Loader2 className="h-4 w-4 animate-spin text-danger" />}
+              <span>{error}</span>
+            </div>
+          ) : null}
           <div className="flex justify-end gap-2">
             <button className="btn" type="button" onClick={() => setOpen(false)}>
               Close

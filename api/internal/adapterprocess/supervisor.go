@@ -51,6 +51,8 @@ func StartWhatsAppAdapter(ctx context.Context, cfg config.Config) (*Process, err
 		"RABBITMQ_URL="+cfg.RabbitMQURL,
 		"WHATSAPP_ADAPTER_PORT="+adapterPort(cfg.WhatsAppAdapterURL, "19090"),
 		"WHATSAPP_SESSION_DIR="+filepath.Join(dir, "sessions"),
+		"API_BASE_URL=http://localhost:"+cfg.Port,
+		"WEBHOOK_SHARED_SECRET="+cfg.WebhookSharedSecret,
 	)
 	pipeOutput("whatsapp-adapter", cmd)
 

@@ -81,24 +81,29 @@ type ChannelAccount struct {
 
 type Conversation struct {
 	Base                   `bson:",inline"`
-	ChannelAccountID       string    `bson:"channel_account_id" json:"channel_account_id"`
-	ExternalConversationID string    `bson:"external_conversation_id" json:"external_conversation_id"`
-	CustomerRef            string    `bson:"customer_ref,omitempty" json:"customer_ref,omitempty"`
-	AssignedUserID         string    `bson:"assigned_user_id,omitempty" json:"assigned_user_id,omitempty"`
-	AssignedTeamID         string    `bson:"assigned_team_id,omitempty" json:"assigned_team_id,omitempty"`
-	Status                 string    `bson:"status" json:"status"`
-	LastMessageAt          time.Time `bson:"last_message_at" json:"last_message_at"`
-	UnreadCount            int       `bson:"unread_count" json:"unread_count"`
-	Tags                   []string  `bson:"tags" json:"tags"`
+	ChannelAccountID       string     `bson:"channel_account_id" json:"channel_account_id"`
+	ExternalConversationID string     `bson:"external_conversation_id" json:"external_conversation_id"`
+	CustomerRef            string     `bson:"customer_ref,omitempty" json:"customer_ref,omitempty"`
+	CustomerName           string     `bson:"customer_name,omitempty" json:"customer_name,omitempty"`
+	AssignedUserID         string     `bson:"assigned_user_id,omitempty" json:"assigned_user_id,omitempty"`
+	AssignedTeamID         string     `bson:"assigned_team_id,omitempty" json:"assigned_team_id,omitempty"`
+	Status                 string     `bson:"status" json:"status"`
+	LastMessageAt          time.Time  `bson:"last_message_at" json:"last_message_at"`
+	LastMessageText        string     `bson:"-" json:"last_message_text,omitempty"`
+	UnreadCount            int        `bson:"unread_count" json:"unread_count"`
+	HasUnread              bool       `bson:"-" json:"has_unread"`
+	LastSeenAt             *time.Time `bson:"-" json:"last_seen_at,omitempty"`
+	Tags                   []string   `bson:"tags" json:"tags"`
 }
 
 type ConversationMember struct {
 	Base              `bson:",inline"`
-	ConversationID    string `bson:"conversation_id" json:"conversation_id"`
-	UserID            string `bson:"user_id" json:"user_id"`
-	AccessLevel       string `bson:"access_level" json:"access_level"`
-	Source            string `bson:"source" json:"source"`
-	LastSeenMessageID string `bson:"last_seen_message_id,omitempty" json:"last_seen_message_id,omitempty"`
+	ConversationID    string     `bson:"conversation_id" json:"conversation_id"`
+	UserID            string     `bson:"user_id" json:"user_id"`
+	AccessLevel       string     `bson:"access_level" json:"access_level"`
+	Source            string     `bson:"source" json:"source"`
+	LastSeenMessageID string     `bson:"last_seen_message_id,omitempty" json:"last_seen_message_id,omitempty"`
+	LastSeenAt        *time.Time `bson:"last_seen_at,omitempty" json:"last_seen_at,omitempty"`
 }
 
 type Message struct {

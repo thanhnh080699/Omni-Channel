@@ -50,6 +50,7 @@ func EnsureIndexes(ctx context.Context, db *Mongo) error {
 		"conversation_members": {
 			uniqueIndex(bson.D{{Key: "conversation_id", Value: 1}, {Key: "user_id", Value: 1}}),
 			plainIndex(bson.D{{Key: "user_id", Value: 1}}),
+			plainIndex(bson.D{{Key: "user_id", Value: 1}, {Key: "last_seen_at", Value: -1}}),
 		},
 		"messages": {
 			sparseUniqueIndex(bson.D{{Key: "channel_message_key", Value: 1}}),
